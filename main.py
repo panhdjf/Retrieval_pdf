@@ -1,39 +1,33 @@
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-
-from PyPDF2 import PdfReader
-from langchain.text_splitter import CharacterTextSplitter
-from langchain import HuggingFacePipeline, PromptTemplate
-from langchain.embeddings import OpenAIEmbeddings, HuggingFaceInstructEmbeddings
-from langchain.vectorstores import FAISS
-from langchain.chat_models import ChatOpenAI
-from langchain.memory import ConversationBufferMemory
-from langchain.chains import ConversationalRetrievalChain
-from htmlTemplates import css, bot_template, user_template
-from langchain.llms import HuggingFaceHub
-import os
-from os import listdir
-from os.path import isfile, join
-
 from langchain.document_loaders import PyPDFDirectoryLoader
-
-from transformers import pipeline
-from transformers import AutoTokenizer, TextStreamer, pipeline
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.text_splitter import CharacterTextSplitter
+from langchain.embeddings import  HuggingFaceInstructEmbeddings
+from langchain.vectorstores import FAISS
 
 import torch
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
+
+from langchain import HuggingFacePipeline, PromptTemplate
+from langchain.memory import ConversationBufferMemory
+from langchain.chains import ConversationalRetrievalChain
+from htmlTemplates import css, bot_template, user_template
+from os import listdir
+from os.path import isfile, join
+from transformers import pipeline
+from transformers import TextStreamer, pipeline
+
 import ipywidgets as widgets
 from IPython.display import display, HTML
 
+device = torch.device("cpu")
 
-# OPENAI_API_KEY = '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'
-HUGGINGFACEHUB_API_TOKEN = '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'
-
+# Read pdf
 loader = PyPDFDirectoryLoader("pdfs")
 docs = loader.load()
 
 text_splitter = RecursiveCharacterTextSplitter(chunk_size=1024, chunk_overlap=64)
 texts = text_splitter.split_documents(docs)
-# texts = texts[:2]
+# texts = texts[:1]
 
 def get_text_chunks(texts):
     text_splitter = CharacterTextSplitter(
@@ -50,28 +44,32 @@ def get_text_chunks(texts):
 
 def get_vectorstore(text_chunks):
     # embeddings = OpenAIEmbeddings()
-    embeddings = HuggingFaceInstructEmbeddings(model_name="hkunlp/instructor-xl")
+    embeddings = HuggingFaceInstructEmbeddings(model_name="hkunlp/instructor-xl", model_kwargs={"device": device})
+    # embeddings = HuggingFaceInstructEmbeddings(
+    # model_name="hkunlp/instructor-large", model_kwargs={"device": device})
+    
+
     vectorstore = FAISS.from_texts(texts=text_chunks, embedding=embeddings)
     return vectorstore
 
 text_chunks = get_text_chunks(texts)
 vectorstore = get_vectorstore(text_chunks)
 
+
+HUGGINGFACEHUB_API_TOKEN = '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'
 """# PhoGPT"""
 model_path = "vinai/PhoGPT-7B5-Instruct"
 config = AutoConfig.from_pretrained(model_path, trust_remote_code=True, use_auth_token=HUGGINGFACEHUB_API_TOKEN)
-config.init_device = "cuda"
+config.init_device = "cpu"
 # config.attn_config['attn_impl'] = 'triton' # Enable if "triton" installed!
 
-model = AutoModelForCausalLM.from_pretrained(
-    model_path, config=config, torch_dtype=torch.bfloat16, trust_remote_code=True, use_auth_token=HUGGINGFACEHUB_API_TOKEN)
+# model = AutoModelForCausalLM.from_pretrained(
+    # model_path, config=config, torch_dtype=torch.bfloat16, trust_remote_code=True, use_auth_token=HUGGINGFACEHUB_API_TOKEN)
 # If your GPU does not support bfloat16:
-# model = AutoModelForCausalLM.from_pretrained(model_path, config=config, torch_dtype=torch.float16, trust_remote_code=True)
+model = AutoModelForCausalLM.from_pretrained(model_path, config=config, torch_dtype=torch.float16, trust_remote_code=True, use_auth_token=HUGGINGFACEHUB_API_TOKEN)
 model.eval()
 
 tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True,  use_auth_token=HUGGINGFACEHUB_API_TOKEN)
-
-
 
 
 DEFAULT_SYSTEM_PROMPT = """
@@ -135,7 +133,7 @@ def get_conversation_chain(vectorstore):
     return conversation_chain
 
 
-git config --global user.name "Your Name"
+
 
 def display_message(content, is_user=True):
     if is_user:
